@@ -37,6 +37,38 @@ RED     = "#f87171"
 TEXT    = "#e8e8f0"
 MUTED   = "#6b6b7e"
 
+# ── Configurações persistentes ────────────────────────────────────────────────
+
+class ConfigManager:
+    ARQUIVO = Path.home() / ".certificados_config.json"
+    DEFAULTS = {
+        "ultima_pasta": "",
+        "modo": "lote",
+        "geometry": "",
+    }
+
+    def __init__(self):
+        self._dados: dict = self._carregar()
+
+    def _carregar(self) -> dict:
+        try:
+            dados = json.loads(self.ARQUIVO.read_text(encoding="utf-8"))
+            return {**self.DEFAULTS, **dados}
+        except Exception:
+            return dict(self.DEFAULTS)
+
+    def salvar(self):
+        self.ARQUIVO.write_text(
+            json.dumps(self._dados, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def get(self, chave: str):
+        return self._dados.get(chave, self.DEFAULTS.get(chave, ""))
+
+    def set(self, chave: str, valor):
+        self._dados[chave] = valor
+        self.salvar()
+
+
 # ── Gerenciador de emissores (persistente) ─────────────────────────────────────
 
 class EmissorManager:
@@ -245,6 +277,7 @@ class App(tk.Tk):
         self.minsize(900, 640)
         self.configure(bg=BG)
 
+        self.config        = ConfigManager()
         self.emissores     = EmissorManager()
         self.client        = None
         self.resultados:   list[dict] = []
@@ -257,6 +290,8 @@ class App(tk.Tk):
         self._estilos()
         self._build_ui()
         self._detectar_onedrives()
+        self._restaurar_config()
+        self.protocol("WM_DELETE_WINDOW", self._ao_fechar)
 
     # ── Estilos ────────────────────────────────────────────────────────────────
 
@@ -475,6 +510,39 @@ class App(tk.Tk):
         self.lbl_toast = tk.Label(self.frame_toast, text="", bg="#162616",
                                   fg=GREEN, font=("Segoe UI", 10, "bold"))
         self.lbl_toast.pack(expand=True)
+
+    # ── OneDrive ───────────────────────────────────────────────────────────────
+
+    # ── Configurações ──────────────────────────────────────────────────────────
+
+    def _restaurar_config(self):
+        geo = self.config.get("geometry")
+        if geo:
+            try:
+                self.geometry(geo)
+            except Exception:
+                pass
+
+        modo = self.config.get("modo")
+        if modo in ("lote", "individual"):
+            self.var_modo.set(modo)
+
+        pasta_salva = self.config.get("ultima_pasta")
+        if pasta_salva and Path(pasta_salva).is_dir():
+            self.var_pasta.set(pasta_salva)
+            # Sincroniza o combo de OneDrive se a pasta salva for raiz de um drive
+            for d in self._drives:
+                if Path(pasta_salva) == d["caminho"]:
+                    self.combo_drive.set(d["label"])
+                    break
+
+    def _ao_fechar(self):
+        self.config.set("geometry", self.geometry())
+        self.config.set("modo", self.var_modo.get())
+        pasta = self.var_pasta.get().strip()
+        if pasta:
+            self.config.set("ultima_pasta", pasta)
+        self.destroy()
 
     # ── OneDrive ───────────────────────────────────────────────────────────────
 
