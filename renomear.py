@@ -538,6 +538,7 @@ class App(tk.Tk):
         self.progress.configure(maximum=len(pdfs), value=0)
 
         def worker():
+            erros = []
             for i, pdf in enumerate(pdfs):
                 self.after(0, self.lbl_prog.configure,
                            {"text": f"Analisando {i+1}/{len(pdfs)}: {pdf.name}"})
@@ -580,6 +581,8 @@ class App(tk.Tk):
                 # Fallback: se o modo texto não extraiu nada útil, tenta Vision
                 if not usou_visao and not campos.get("data") and not campos.get("palestra"):
                     campos = extrair_campos_via_visao(pdf, self.client)
+                if campos.get("_erro"):
+                    erros.append(f"{pdf.name}:\n{campos['_erro']}")
                 data     = campos.get("data", "")
                 palestra = campos.get("palestra", "").strip().title()
                 nao_extraiu = not data and not palestra
@@ -597,7 +600,7 @@ class App(tk.Tk):
                 self.resultados.append(item)
                 self.after(0, self._add_row, len(self.resultados) - 1)
                 self.after(0, self.progress.configure, {"value": i + 1})
-            self.after(0, self._analise_ok, len(pdfs))
+            self.after(0, self._analise_ok, len(pdfs), erros)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -610,10 +613,13 @@ class App(tk.Tk):
         ), tags=(r["status"],))
         self._atualizar_count()
 
-    def _analise_ok(self, total: int):
+    def _analise_ok(self, total: int, erros: list[str]):
         self.frame_prog.pack_forget()
         self.btn_analisar.configure(state="normal")
         self.lbl_status.configure(text=f"Análise concluída — {total} arquivo(s). Selecione um arquivo e preencha o emissor.")
+        if erros:
+            messagebox.showerror("Erro na análise",
+                                 f"{len(erros)} arquivo(s) com erro:\n\n" + "\n\n".join(erros[:3]))
 
     # ── Seleção e preview ──────────────────────────────────────────────────────
 
